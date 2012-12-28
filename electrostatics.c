@@ -80,7 +80,6 @@ void assign_charges( struct Structure This_Structure ) {
 
 
 void electric_field( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) {
-
 /************/
 
   /* Counters */
@@ -89,7 +88,7 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 
   /* Co-ordinates */
 
-  int	x , y , z ;
+  int	x, y, z, i;
   float		x_centre , y_centre , z_centre ;
 
   /* Variables */
@@ -98,79 +97,66 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
   float		phi , epsilon ;
 
 /************/
+ int maxTotalElements = 0;
+ int totalElements = 0;
 
-  for( x = 0 ; x < grid_size ; x ++ ) {
-    for( y = 0 ; y < grid_size ; y ++ ) {
-      for( z = 0 ; z < grid_size ; z ++ ) {
+	for (residue = 1; residue <= This_Structure.length; residue++)
+		maxTotalElements += This_Structure.Residue[residue].size;
 
-        grid[gaddress(x,y,z,grid_size)] = (fftw_real)0 ;
+	float *charge = malloc(sizeof(float)*maxTotalElements);
+	float *coord1 = malloc(sizeof(float)*maxTotalElements);
+	float *coord2 = malloc(sizeof(float)*maxTotalElements);
+	float *coord3 = malloc(sizeof(float)*maxTotalElements);
 
-      }
-    }
-  }
+	
+	for (residue = 1; residue <= This_Structure.length; residue++)
+		for (atom = 1; atom <= This_Structure.Residue[residue].size; atom++)
+			if (This_Structure.Residue[residue].Atom[atom].charge != 0){
+				charge[totalElements] = This_Structure.Residue[residue].Atom[atom].charge;
+				coord1[totalElements] = This_Structure.Residue[residue].Atom[atom].coord[1]; 
+				coord2[totalElements] = This_Structure.Residue[residue].Atom[atom].coord[2]; 
+				coord3[totalElements] = This_Structure.Residue[residue].Atom[atom].coord[3]; 
+				totalElements++;
+			}
+
+
+
+  for (x = 0; x < grid_size; x++)
+    for (y = 0; y < grid_size; y++)
+      for (z = 0; z < grid_size; z++)
+        grid[gaddress(x,y,z,grid_size)] = (fftw_real)0;
 
 /************/
 
   setvbuf( stdout , (char *)NULL , _IONBF , 0 ) ;
-
   printf( "  electric field calculations ( one dot / grid sheet ) " ) ;
 
   for( x = 0 ; x < grid_size ; x ++ ) {
-
     printf( "." ) ;
-
     x_centre  = gcentre( x , grid_span , grid_size ) ;
-
     for( y = 0 ; y < grid_size ; y ++ ) {
-
       y_centre  = gcentre( y , grid_span , grid_size ) ;
-
       for( z = 0 ; z < grid_size ; z ++ ) {
-
         z_centre  = gcentre( z , grid_span , grid_size ) ;
-
         phi = 0 ;
 
-        for( residue = 1 ; residue <= This_Structure.length ; residue ++ ) {
-          for( atom = 1 ; atom <= This_Structure.Residue[residue].size ; atom ++ ) {
-
-            if( This_Structure.Residue[residue].Atom[atom].charge != 0 ) {
-
-              distance = pythagoras( This_Structure.Residue[residue].Atom[atom].coord[1] , This_Structure.Residue[residue].Atom[atom].coord[2] , This_Structure.Residue[residue].Atom[atom].coord[3] , x_centre , y_centre , z_centre ) ;
-         
-              if( distance < 2.0 ) distance = 2.0 ;
-
-              if( distance >= 2.0 ) {
-
-                if( distance >= 8.0 ) {
-
-                  epsilon = 80 ;
-
-                } else { 
-
-                  if( distance <= 6.0 ) { 
-
-                    epsilon = 4 ;
-             
-                  } else {
-
-                    epsilon = ( 38 * distance ) - 224 ;
-
-                  }
-
-                }
-  
-                phi += ( This_Structure.Residue[residue].Atom[atom].charge / ( epsilon * distance ) ) ;
-
-              }
-
-            }
-
-          }
-        }
-
+			for (i = 0; i < totalElements; i++) {
+				distance = pythagoras( coord1[i], coord2[i], coord3[i], x_centre, y_centre, z_centre);
+				if( distance < 2.0 ) distance = 2.0 ;
+				if( distance >= 2.0 ) {
+					if( distance >= 8.0 ) {
+						epsilon = 80 ;
+					} else { 
+						if( distance <= 6.0 ) { 
+							epsilon = 4; 
+						} else {
+							epsilon = ( 38 * distance ) - 224;
+						}
+					}
+					phi += ( charge[i] / ( epsilon * distance ) ) ;
+				}
+			}
         grid[gaddress(x,y,z,grid_size)] = (fftw_real)phi ;
-
       }
     }
   }
