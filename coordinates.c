@@ -27,7 +27,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "structures.h"
+#include <emmintrin.h>
 
+
+#define sub(a,b) (_mm_sub_ps(a,b))
+#define mul(a,b) (_mm_mul_ps(a,b))
+#define add(a,b) (_mm_add_ps(a,b))
+#define sq(a)	 (_mm_sqrt_ps(a))
+#define set(a)	 (_mm_set1_ps(a))
 /************/
 
 int gord( float position , float grid_span , int grid_size ) {
@@ -47,7 +54,33 @@ int gord( float position , float grid_span , int grid_size ) {
 /************/
 
 float pythagoras( float x1 , float y1 , float z1 , float x2 , float y2 , float z2 ) {
-
   return sqrt( ( ( x1 - x2 ) * ( x1 - x2 ) ) + ( ( y1 - y2 ) * ( y1 - y2 ) ) + ( ( z1 - z2 ) * ( z1 - z2 ) ) ) ;
 
+}
+
+float pythagoras2( float x1 , float y1 , float z1 , float x2 , float y2 , float z2 ) {
+
+  printf("el que rebo: %f %f %f -- %f %f %f\n",x1,y1,z1,x2,y2,z2);
+  return sqrt( ( ( x1 - x2 ) * ( x1 - x2 ) ) + ( ( y1 - y2 ) * ( y1 - y2 ) ) + ( ( z1 - z2 ) * ( z1 - z2 ) ) ) ;
+
+}
+
+void pythagorasVectCore2Duo( float *x1 , float *y1 , float *z1 , float x2 , float y2 , float z2, float *d) {
+	__m128 *vx1, *vy1, *vz1;
+	__m128 r1, r2, r3;
+	vx1 = (__m128*)x1;
+	vy1 = (__m128*)y1;
+	vz1 = (__m128*)z1;
+	r1 = sub(*vx1,set(x2));
+	r1 = mul(r1,r1);
+	r2 = sub(*vy1,set(y2));
+	r2 = mul(r2,r2);
+	r3 = sub(*vz1,set(z2));
+	r3 = mul(r3,r3);
+  printf("%f %f %f -- %f %f %f\n",x1[0],y1[0],z1[0],x2,y2,z2);
+  printf("%f %f %f -- %f %f %f\n",x1[1],y1[1],z1[1],x2,y2,z2);
+  printf("%f %f %f -- %f %f %f\n",x1[2],y1[2],z1[2],x2,y2,z2);
+  printf("%f %f %f -- %f %f %f\n",x1[3],y1[3],z1[3],x2,y2,z2);
+	//printf("%f %f %f %f\n",aux[0],aux[1],aux[2],aux[3]);
+	*((__m128*)d) = sq(add(add(r1,r2),r3));
 }
