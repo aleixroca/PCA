@@ -126,6 +126,7 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 
 
 /************************/
+
 #define computeBlock(start, stop) {																		\
 				for (i = 0; i < totalElements-3; i+=4) {                      \
 	                                                                    \
@@ -169,29 +170,20 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 }
 
 void electric_field( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) {
-/************/
-
   /* Counters */
-
   int	residue , atom ;
-
   /* Co-ordinates */
-
   int	x, y, z, i, k;
   float		x_centre , y_centre , z_centre ;
-
   /* Variables */
-
-  //float		distance[4];
-  float		phi;// , epsilon[4] ;
+  float		phi;
 	float *distance, *epsilon;
-
   /* Vectorization stuff */
   __m128 _phiSet;
 	float *phiSet = (float *) &_phiSet;
-
-
-/************/
+	/* Blocking stuff */
+	int block_size = 512;
+ 
   int maxTotalElements = 0;
   int totalElements = 0;
 	float *charge;
@@ -212,34 +204,38 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 				totalElements++;
 			}
 
+
   for (x = 0; x < grid_size; x++)
     for (y = 0; y < grid_size; y++)
       for (z = 0; z < grid_size; z++)
         grid[gaddress(x,y,z,grid_size)] = (fftw_real)0;
 
-/************/
   setvbuf( stdout , (char *)NULL , _IONBF , 0 ) ;
   printf( "  electric field calculations ( one dot / grid sheet ) " ) ;
-  for( x = 0 ; x < grid_size ; x ++ ) {
-    printf( "." ) ;
-    x_centre  = gcentre( x , grid_span , grid_size ) ;
-    for( y = 0 ; y < grid_size ; y ++ ) {
-      y_centre  = gcentre( y , grid_span , grid_size ) ;
-      for( z = 0 ; z < grid_size ; z ++ ) {
-        z_centre  = gcentre( z , grid_span , grid_size ) ;
-        phi = 0 ;
 
-				int start = 0;
-				int stop = totalElements;
-				computeBlock(start, stop);
-    	  grid[gaddress(x,y,z,grid_size)] = (fftw_real)phi ;
-      }
-    }
-  }
+
+	int block_ini, block_fin;
+
+	for (block_ini = 0; block_ini < totalElements-(block_size-1); block_ini += block_size) { 
+		block_fin = block_ini + block_size;
+	  for( x = 0 ; x < grid_size ; x ++ ) {
+	    printf( "." ) ;
+	    x_centre  = gcentre( x , grid_span , grid_size ) ;
+	    for( y = 0 ; y < grid_size ; y ++ ) {
+	      y_centre  = gcentre( y , grid_span , grid_size ) ;
+	      for( z = 0 ; z < grid_size ; z ++ ) {
+	        z_centre  = gcentre( z , grid_span , grid_size ) ;
+	        phi = 0 ;
+	
+					computeBlock(blok_ini, block_fin);
+	    	  grid[gaddress(x,y,z,grid_size)] = (fftw_real)phi ;
+	      }
+	    }
+	  }
+	}
 
   printf( "\n" ) ;
 
-/************/
 
   return ;
 
