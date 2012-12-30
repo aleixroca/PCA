@@ -60,12 +60,14 @@ float pythagoras( float x1 , float y1 , float z1 , float x2 , float y2 , float z
 
 float pythagoras2( float x1 , float y1 , float z1 , float x2 , float y2 , float z2 ) {
 
-  printf("el que rebo: %f %f %f -- %f %f %f\n",x1,y1,z1,x2,y2,z2);
   return sqrt( ( ( x1 - x2 ) * ( x1 - x2 ) ) + ( ( y1 - y2 ) * ( y1 - y2 ) ) + ( ( z1 - z2 ) * ( z1 - z2 ) ) ) ;
 
 }
 
-void pythagorasVectCore2Duo( float *x1 , float *y1 , float *z1 , float x2 , float y2 , float z2, float *d) {
+
+
+
+void pythagorasVectCore2Duo2( float *x1 , float *y1 , float *z1 , float x2 , float y2 , float z2, float *d) {
 	__m128 *vx1, *vy1, *vz1;
 	__m128 r1, r2, r3;
 	vx1 = (__m128*)x1;
@@ -77,10 +79,6 @@ void pythagorasVectCore2Duo( float *x1 , float *y1 , float *z1 , float x2 , floa
 	r2 = mul(r2,r2);
 	r3 = sub(*vz1,set(z2));
 	r3 = mul(r3,r3);
-  printf("%f %f %f -- %f %f %f\n",x1[0],y1[0],z1[0],x2,y2,z2);
-  printf("%f %f %f -- %f %f %f\n",x1[1],y1[1],z1[1],x2,y2,z2);
-  printf("%f %f %f -- %f %f %f\n",x1[2],y1[2],z1[2],x2,y2,z2);
-  printf("%f %f %f -- %f %f %f\n",x1[3],y1[3],z1[3],x2,y2,z2);
-	//printf("%f %f %f %f\n",aux[0],aux[1],aux[2],aux[3]);
 	*((__m128*)d) = sq(add(add(r1,r2),r3));
 }
+

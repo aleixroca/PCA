@@ -36,7 +36,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define sq(a)	 (_mm_sqrt_ps(a))
 #define set(a)	 (_mm_set1_ps(a))
 
-
+#define pythagorasVectCore2Duo(x1, y1, z1, x2, y2, z2, d) {\
+	__m128 *vx1, *vy1, *vz1;			\
+	__m128 r1, r2, r3;				\
+	vx1 = (__m128*)x1;				\
+	vy1 = (__m128*)y1;				\
+	vz1 = (__m128*)z1;				\
+	r1 = sub(*vx1,set(x2));				\
+	r1 = mul(r1,r1);				\
+	r2 = sub(*vy1,set(y2));				\
+	r2 = mul(r2,r2);				\
+	r3 = sub(*vz1,set(z2));				\
+	r3 = mul(r3,r3);				\
+	*((__m128*)d) = sq(add(add(r1,r2),r3));		\
+}
 
 void assign_charges( struct Structure This_Structure ) {
 
@@ -84,10 +97,76 @@ void assign_charges( struct Structure This_Structure ) {
 }
 
 
+inline void allocatedata_electric_field(float **charge, float **coord1, float **coord2, float **coord3, float **epsilon, float **distance, int maxTotalElements) {
+  if ((posix_memalign((void**)charge, 16, maxTotalElements*sizeof(float))!=0)) {
+    printf("No memory.\n");
+    exit(-1);
+  }
+	if ((posix_memalign((void**)coord1, 16, maxTotalElements*sizeof(float))!=0)) {
+    printf("No memory.\n");
+    exit(-1);
+  }
+	if ((posix_memalign((void**)coord2, 16, maxTotalElements*sizeof(float))!=0)) {
+    printf("No memory.\n");
+    exit(-1);
+  }
+	if ((posix_memalign((void**)coord3, 16, maxTotalElements*sizeof(float))!=0)) {
+    printf("No memory.\n");
+    exit(-1);
+  }
+  if ((posix_memalign((void**)distance, 16, 4*sizeof(float))!=0)) {
+    printf("No memory.\n");
+    exit(-1);
+  }
+  if ((posix_memalign((void**)epsilon, 16, 4*sizeof(float))!=0)) {
+    printf("No memory.\n");
+    exit(-1);
+  }
+}
+
 
 /************************/
-
-
+#define computeBlock(start, stop) {																		\
+				for (i = 0; i < totalElements-3; i+=4) {                      \
+	                                                                    \
+					pythagorasVectCore2Duo(&coord1[i], &coord2[i], &coord3[i],  \
+														x_centre, y_centre, z_centre, distance);  \
+					                                                            \
+					for (k = 0; k < 4; k++) {                                   \
+						if (distance[k] < 2.0 ) distance[k] = 2.0 ;               \
+						if (distance[k] >= 8.0 ) {                                \
+							epsilon[k] = 80 ;                                       \
+						} else {                                                  \
+							if (distance[k] <= 6.0 ) {                              \
+								epsilon[k] = 4;                                       \
+							} else {                                                \
+								epsilon[k] = ( 38 * distance[k] ) - 224;              \
+							}                                                       \
+						}                                                         \
+					}                                                           \
+	                                                                    \
+					_phiSet=_mm_div_ps(*((__m128 *)&charge[i]),                 \
+						_mm_mul_ps(*((__m128*)epsilon),*((__m128*)distance)));    \
+					phi += phiSet[0] + phiSet[1] + phiSet[2] + phiSet[3];       \
+	                                                                    \
+				}                                                             \
+                                                                      \
+				for (;i < totalElements; i++) {                               \
+				  distance[0] = pythagoras2( coord1[i], coord2[i],            \
+								coord3[i], x_centre, y_centre, z_centre);             \
+					if (distance[0] < 2.0 ) distance[0] = 2.0 ;                 \
+					if (distance[0] >= 8.0 ) {                                  \
+						epsilon[0] = 80 ;                                         \
+					} else {                                                    \
+						if (distance[0] <= 6.0 ) {                                \
+							epsilon[0] = 4;                                         \
+						} else {                                                  \
+							epsilon[0] = ( 38 * distance[0] ) - 224;                \
+						}                                                         \
+					}                                                           \
+					phi += ( charge[i] / ( epsilon[0] * distance[0] ) ) ;       \
+				}                                                             \
+}
 
 void electric_field( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) {
 /************/
@@ -105,12 +184,12 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 
   //float		distance[4];
   float		phi;// , epsilon[4] ;
-	float *distance, *epsilon, *dist;
+	float *distance, *epsilon;
 
   /* Vectorization stuff */
-
-	__m128 _phiSet;
+  __m128 _phiSet;
 	float *phiSet = (float *) &_phiSet;
+
 
 /************/
   int maxTotalElements = 0;
@@ -121,34 +200,7 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 	for (residue = 1; residue <= This_Structure.length; residue++)
 		maxTotalElements += This_Structure.Residue[residue].size;
 
-  if ((posix_memalign((void**)&charge, 16, maxTotalElements*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
-	if ((posix_memalign((void**)&coord1, 16, maxTotalElements*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
-	if ((posix_memalign((void**)&coord2, 16, maxTotalElements*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
-	if ((posix_memalign((void**)&coord3, 16, maxTotalElements*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
-  if ((posix_memalign((void**)&distance, 16, 4*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
-  if ((posix_memalign((void**)&epsilon, 16, 4*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
-  if ((posix_memalign((void**)&dist, 16, 4*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
+	allocatedata_electric_field(&charge, &coord1, &coord2, &coord3, &epsilon, &distance, maxTotalElements);
 
 	for (residue = 1; residue <= This_Structure.length; residue++)
 		for (atom = 1; atom <= This_Structure.Residue[residue].size; atom++)
@@ -159,8 +211,6 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 				coord3[totalElements] = This_Structure.Residue[residue].Atom[atom].coord[3]; 
 				totalElements++;
 			}
-
-FILE *f = fopen("out.out.out","w");
 
   for (x = 0; x < grid_size; x++)
     for (y = 0; y < grid_size; y++)
@@ -178,88 +228,11 @@ FILE *f = fopen("out.out.out","w");
       for( z = 0 ; z < grid_size ; z ++ ) {
         z_centre  = gcentre( z , grid_span , grid_size ) ;
         phi = 0 ;
-			for (i = 0; i < totalElements-3; i+=4) {
-				//distance = pythagoras( coord1[i], coord2[i], coord3[i], x_centre, y_centre, z_centre);
 
-				printf("----------------------\n\n");
-
-
-/*
-	__m128 *vx1, *vy1, *vz1;
-	__m128 r1, r2, r3;
-	vx1 = (__m128*)&coord1[i];
-	vy1 = (__m128*)&coord2[i];
-	vz1 = (__m128*)&coord3[i];
-	r1 = sub(*vx1,set(x_centre));
-	r1 = mul(r1,r1);
-	r2 = sub(*vy1,set(y_centre));
-	r2 = mul(r2,r2);
-	r3 = sub(*vz1,set(z_centre));
-	r3 = mul(r3,r3);
-
-
-	*((__m128*)distance) = sq(add(add(r1,r2),r3));
-*/
-
-//printf("%f %f %f %f\n", distance[0], distance[1], distance[2], distance[3]);
-
-  			pythagorasVectCore2Duo( &coord1[i], &coord2[i], &coord3[i], x_centre, y_centre, z_centre,  distance);
-//				float auxaux = pythagoras( coord1[i], coord2[i], coord3[i], x_centre, y_centre, z_centre);
-	//		fprintf(f,"%f %f %f %f\n",distance[0], distance[1], distance[2], distance[3]);
-				//printf("%f -- %f\n", auxaux, distance[0]);
-				printf("////////////\n");
-				distance[0] = pythagoras2( coord1[i], coord2[i], coord3[i], x_centre, y_centre, z_centre);
-				distance[1] = pythagoras2( coord1[i+1], coord2[i+1], coord3[i+1], x_centre, y_centre, z_centre);
-				distance[2] = pythagoras2( coord1[i+2], coord2[i+2], coord3[i+2], x_centre, y_centre, z_centre);
-				distance[3] = pythagoras2( coord1[i+3], coord2[i+3], coord3[i+3], x_centre, y_centre, z_centre);
-printf("<<<<<>>>>>\n");
-				for (k = 0; k < 4; k++) {
-				  printf("el que li passo: %f %f %f\n",coord1[i+k], coord2[i+k], coord3[i+k]);
-				  //dist[k] = pythagoras2( coord1[i+k], coord2[i+k], coord3[i+k], x_centre, y_centre, z_centre);
-				//	if (dist[k] != distance[k]) printf("%f - %f\n",dist[k], distance[k]);
-					if (distance[k] < 2.0 ) distance[k] = 2.0 ;//maxim entre 2.0 i distance
-					//if( distance >= 2.0 ) { Aquest if accelere el programa en 2 segons ??¿?¿?
-					if (distance[k] >= 8.0 ) {
-						epsilon[k] = 80 ;
-					} else { 
-						if (distance[k] <= 6.0 ) { 
-							epsilon[k] = 4; 
-						} else {
-							epsilon[k] = ( 38 * distance[k] ) - 224;
-						}
-					}
-				}
-				//phi += ( charge[i] / ( epsilon * distance ) ) ;
-				
-				phi += ( charge[i] / ( epsilon[0] * distance[0] ) ) ;
-				phi += ( charge[i+1] / ( epsilon[1] * distance[1] ) ) ;
-				phi += ( charge[i+2] / ( epsilon[2] * distance[2] ) ) ;
-				phi += ( charge[i+3] / ( epsilon[3] * distance[3] ) ) ;
-
-				//_phiSet=_mm_div_ps(*((__m128 *)&charge[i]), _mm_mul_ps(*((__m128*)&epsilon[i]),*((__m128*)&distance[i])));
-				//phi += *(((float*)&_phiSet)+0)+*(((float*)&_phiSet)+1)+*(((float*)&_phiSet)+2)+*(((float*)&_phiSet)+3);
-				//phi += phiSet[0] + phiSet[1] + phiSet[2] + phiSet[3];
-
-			//	}
-			}
-
-			for (;i < totalElements; i++) {
-			  distance[0] = pythagoras2( coord1[i], coord2[i], coord3[i], x_centre, y_centre, z_centre);
-				if (distance[0] < 2.0 ) distance[0] = 2.0 ;//maxim entre 2.0 i distance
-				//if( distance >= 2.0 ) { Aquest if accelere el programa en 2 segons ??¿?¿?
-				if (distance[0] >= 8.0 ) {
-					epsilon[0] = 80 ;
-				} else { 
-					if (distance[0] <= 6.0 ) { 
-						epsilon[0] = 4; 
-					} else {
-						epsilon[0] = ( 38 * distance[0] ) - 224;
-					}
-				}
-				phi += ( charge[i] / ( epsilon[0] * distance[0] ) ) ;
-			}
-
-      grid[gaddress(x,y,z,grid_size)] = (fftw_real)phi ;
+				int start = 0;
+				int stop = totalElements;
+				computeBlock(start, stop);
+    	  grid[gaddress(x,y,z,grid_size)] = (fftw_real)phi ;
       }
     }
   }
