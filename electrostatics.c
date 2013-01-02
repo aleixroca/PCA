@@ -126,47 +126,43 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 
 
 /************************/
+#define calcEpsilon(k) {																		\
+	if (distance[k] < 2.0 ) distance[k] = 2.0 ;               \
+	if (distance[k] >= 8.0 ) {                                \
+		epsilon[k] = 80 ;                                       \
+	} else {                                                  \
+		if (distance[k] <= 6.0 ) {                              \
+			epsilon[k] = 4;                                       \
+		} else {                                                \
+			epsilon[k] = ( 38 * distance[k] ) - 224;              \
+		}                                                       \
+	}                                                         \
+}
 
-#define computeBlock(start, stop) {																		\
-				for (i = 0; i < totalElements-3; i+=4) {                      \
-	                                                                    \
-					pythagorasVectCore2Duo(&coord1[i], &coord2[i], &coord3[i],  \
-														x_centre, y_centre, z_centre, distance);  \
-					                                                            \
-					for (k = 0; k < 4; k++) {                                   \
-						if (distance[k] < 2.0 ) distance[k] = 2.0 ;               \
-						if (distance[k] >= 8.0 ) {                                \
-							epsilon[k] = 80 ;                                       \
-						} else {                                                  \
-							if (distance[k] <= 6.0 ) {                              \
-								epsilon[k] = 4;                                       \
-							} else {                                                \
-								epsilon[k] = ( 38 * distance[k] ) - 224;              \
-							}                                                       \
-						}                                                         \
-					}                                                           \
-	                                                                    \
-					_phiSet=_mm_div_ps(*((__m128 *)&charge[i]),                 \
-						_mm_mul_ps(*((__m128*)epsilon),*((__m128*)distance)));    \
-					phi += phiSet[0] + phiSet[1] + phiSet[2] + phiSet[3];       \
-	                                                                    \
-				}                                                             \
-                                                                      \
-				for (;i < totalElements; i++) {                               \
-				  distance[0] = pythagoras2( coord1[i], coord2[i],            \
-								coord3[i], x_centre, y_centre, z_centre);             \
-					if (distance[0] < 2.0 ) distance[0] = 2.0 ;                 \
-					if (distance[0] >= 8.0 ) {                                  \
-						epsilon[0] = 80 ;                                         \
-					} else {                                                    \
-						if (distance[0] <= 6.0 ) {                                \
-							epsilon[0] = 4;                                         \
-						} else {                                                  \
-							epsilon[0] = ( 38 * distance[0] ) - 224;                \
-						}                                                         \
-					}                                                           \
-					phi += ( charge[i] / ( epsilon[0] * distance[0] ) ) ;       \
-				}                                                             \
+//Asumeix que el block es multiple de 4
+#define computeBlock(start, stop) {			  											\
+	for (i = start; i < stop; i+=4) {                             \
+		pythagorasVectCore2Duo(&coord1[i], &coord2[i], &coord3[i],  \
+											x_centre, y_centre, z_centre, distance);  \
+		                                                            \
+		for (k = 0; k < 4; k++) calcEpsilon(k);					            \
+                                                                \
+		_phiSet=_mm_div_ps(*((__m128 *)&charge[i]),                 \
+			_mm_mul_ps(*((__m128*)epsilon),*((__m128*)distance)));    \
+		phi += phiSet[0] + phiSet[1] + phiSet[2] + phiSet[3];       \
+	}                                                             \
+}
+
+//No assumeix que es block es multiple de 4
+#define computeEndBlock(start, stop) {													\
+	computeBlock(start, (stop-3));                                \
+                                                                \
+	for (;i < stop; i++) {                                        \
+	  distance[0] = pythagoras2( coord1[i], coord2[i],            \
+					coord3[i], x_centre, y_centre, z_centre);             \
+		calcEpsilon(0);                                             \
+		phi += ( charge[i] / ( epsilon[0] * distance[0] ) ) ;       \
+	}                                                             \
 }
 
 void electric_field( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) {
@@ -227,13 +223,29 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 	        z_centre  = gcentre( z , grid_span , grid_size ) ;
 	        phi = 0 ;
 	
-					computeBlock(blok_ini, block_fin);
-	    	  grid[gaddress(x,y,z,grid_size)] = (fftw_real)phi ;
+					computeBlock(block_ini, block_fin);
+	    	  grid[gaddress(x,y,z,grid_size)] += (fftw_real)phi ;
 	      }
 	    }
 	  }
 	}
 
+	if (block_ini != totalElements) { //ultima passada
+	  for( x = 0 ; x < grid_size ; x ++ ) {
+	    printf( "." ) ;
+	    x_centre  = gcentre( x , grid_span , grid_size ) ;
+	    for( y = 0 ; y < grid_size ; y ++ ) {
+	      y_centre  = gcentre( y , grid_span , grid_size ) ;
+	      for( z = 0 ; z < grid_size ; z ++ ) {
+	        z_centre  = gcentre( z , grid_span , grid_size ) ;
+	        phi = 0 ;
+	
+					computeEndBlock(block_ini, totalElements);
+	    	  grid[gaddress(x,y,z,grid_size)] += (fftw_real)phi ;
+	      }
+	    }
+	  }
+	}
   printf( "\n" ) ;
 
 
