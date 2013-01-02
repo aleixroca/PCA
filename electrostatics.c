@@ -29,12 +29,30 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "structures.h"
 #include <emmintrin.h>
 #include <stdio.h>
+#include <pthread.h>
 
 #define sub(a,b) (_mm_sub_ps(a,b))
 #define mul(a,b) (_mm_mul_ps(a,b))
 #define add(a,b) (_mm_add_ps(a,b))
 #define sq(a)	 (_mm_sqrt_ps(a))
 #define set(a)	 (_mm_set1_ps(a))
+
+typedef struct {
+	float * coord1;
+	float * coord2;
+	float * coord3;
+	float * charge;
+	int block_size;
+	int grid_size;
+	float grid_span;
+	fftw_real *grid;
+	int totalElements;
+	int x_start;
+	int x_end;	
+} Thinfo;
+
+//float *coord1, *coord2, *coord3, *charge;
+
 
 #define pythagorasVectCore2Duo(x1, y1, z1, x2, y2, z2, d) {\
 	__m128 *vx1, *vy1, *vz1;			\
@@ -97,7 +115,7 @@ void assign_charges( struct Structure This_Structure ) {
 }
 
 
-inline void allocatedata_electric_field(float **charge, float **coord1, float **coord2, float **coord3, float **epsilon, float **distance, int maxTotalElements) {
+inline void allocatedata_electric_field(float **charge, float **coord1, float **coord2, float **coord3, int maxTotalElements) {
   if ((posix_memalign((void**)charge, 16, maxTotalElements*sizeof(float))!=0)) {
     printf("No memory.\n");
     exit(-1);
@@ -111,14 +129,6 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
     exit(-1);
   }
 	if ((posix_memalign((void**)coord3, 16, maxTotalElements*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
-  if ((posix_memalign((void**)distance, 16, 4*sizeof(float))!=0)) {
-    printf("No memory.\n");
-    exit(-1);
-  }
-  if ((posix_memalign((void**)epsilon, 16, 4*sizeof(float))!=0)) {
     printf("No memory.\n");
     exit(-1);
   }
@@ -136,7 +146,7 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 		} else {                                                \
 			epsilon[k] = ( 38 * distance[k] ) - 224;              \
 		}                                                       \
-	}                                                         \
+	}  																												\
 }
 
 //Asumeix que el block es multiple de 4
@@ -153,7 +163,7 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 	}                                                             \
 }
 
-//No assumeix que es block es multiple de 4
+//No assumeix que el block es multiple de 4
 #define computeEndBlock(start, stop) {													\
 	computeBlock(start, (stop-3));                                \
                                                                 \
@@ -165,6 +175,80 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 	}                                                             \
 }
 
+void *th_electric_field(void *argthinfo) {
+	printf("Estoy vivo!!!\n");
+	Thinfo *thinfo = (Thinfo *) argthinfo;
+	float * charge = thinfo->charge;
+	float * coord1 = thinfo->coord1;
+	float * coord2 = thinfo->coord2;
+	float * coord3 = thinfo->coord3;
+	float grid_span = thinfo->grid_span;
+	int grid_size = thinfo->grid_size;
+	int totalElements = thinfo->totalElements;
+	int block_size = thinfo->block_size;
+	int x_start = thinfo->x_start;
+	int x_end = thinfo->x_end;
+	fftw_real *grid = thinfo->grid;
+
+	float phi;
+	int block_ini, block_fin;
+	int x_centre, y_centre, z_centre;
+	int x, y, z, i, k;
+	
+	__m128 _phiSet;
+	float *phiSet = (float *) &_phiSet;
+	float * distance;
+	float * epsilon;
+
+	FILE *fo = fopen("out.out.out", "w");
+
+  if ((posix_memalign((void**)&distance, 16, 4*sizeof(float))!=0)) {
+    printf("No memory.\n");
+    exit(-1);
+  }
+	printf("He fet un malloc!\n");
+  if ((posix_memalign((void**)&epsilon, 16, 4*sizeof(float))!=0)) {
+    printf("No memory.\n");
+    exit(-1);
+  }
+x_start = 0; x_end = grid_size;
+	for (block_ini = 0; block_ini < totalElements-(block_size-1); block_ini += block_size) { 
+		block_fin = block_ini + block_size;
+	  for (x = x_start; x < x_end; x++) {
+	    x_centre  = gcentre(x ,grid_span, grid_size ) ;
+	    for (y = 0; y < grid_size; y++) {
+	      y_centre = gcentre(y ,grid_span ,grid_size ) ;
+	      for (z = 0; z < grid_size; z++) {
+	        z_centre  = gcentre( z , grid_span , grid_size ) ;
+	        phi = 0 ;
+					computeBlock(block_ini, block_fin);
+	    	  grid[gaddress(x,y,z,grid_size)] += (fftw_real)phi;
+					fprintf(fo,"%f\n",phi);
+	      }
+	    }
+	  }
+	}
+
+	if (block_ini != totalElements) { //ultima passada
+	  for (x = x_start; x < x_end; x++ ) {
+	    x_centre = gcentre(x, grid_span, grid_size) ;
+	    for (y = 0; y < grid_size; y++) {
+	      y_centre = gcentre(y, grid_span, grid_size) ;
+	      for (z = 0; z < grid_size; z++) {
+	        z_centre = gcentre(z, grid_span, grid_size) ;
+	        phi = 0 ;
+					computeEndBlock(block_ini, totalElements);
+	    	  grid[gaddress(x,y,z,grid_size)] += (fftw_real)phi ;
+					fprintf(fo,"%f\n",phi);
+	      }
+	    }
+	  }
+	}
+
+	pthread_exit(NULL);
+	return ;
+}
+
 void electric_field( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) {
   /* Counters */
   int	residue , atom ;
@@ -174,14 +258,15 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
   /* Variables */
   float		phi;
 	float *distance, *epsilon;
-  /* Vectorization stuff */
-  __m128 _phiSet;
-	float *phiSet = (float *) &_phiSet;
-	/* Blocking stuff */
+ 	/* Blocking stuff */
 	int block_size = 512;
+	//int block_size = 1024;
 	/* Threads stuff */
 	int num_threads = 2; 
- 
+	Thinfo *thinfo;
+ 	pthread_t threads[num_threads];
+
+
   int maxTotalElements = 0;
   int totalElements = 0;
 	float *charge;
@@ -190,8 +275,8 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 	for (residue = 1; residue <= This_Structure.length; residue++)
 		maxTotalElements += This_Structure.Residue[residue].size;
 
-	allocatedata_electric_field(&charge, &coord1, &coord2, &coord3, &epsilon, &distance, maxTotalElements);
-
+	allocatedata_electric_field(&charge, &coord1, &coord2, &coord3, maxTotalElements);
+	
 	for (residue = 1; residue <= This_Structure.length; residue++)
 		for (atom = 1; atom <= This_Structure.Residue[residue].size; atom++)
 			if (This_Structure.Residue[residue].Atom[atom].charge != 0){
@@ -211,9 +296,46 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
   setvbuf( stdout , (char *)NULL , _IONBF , 0 ) ;
   printf( "  electric field calculations ( one dot / grid sheet ) " ) ;
 
+	thinfo = (Thinfo *) malloc (sizeof(Thinfo)*num_threads);
+	if (thinfo == NULL) {
+    printf("No memory.\n");
+    exit(-1);
+	}
+	int elements_per_thread = grid_size/num_threads;
+	for (i = 0; i < num_threads; i++) {
+		thinfo[i].coord1 = coord1;
+		thinfo[i].coord2 = coord2;
+		thinfo[i].coord3 = coord3;
+		thinfo[i].charge = charge;
+		thinfo[i].grid_size = grid_size;
+		thinfo[i].grid_span = grid_span;
+		thinfo[i].grid = grid;
+		thinfo[i].block_size = block_size;
+		thinfo[i].totalElements = totalElements;
+		thinfo[i].x_start = elements_per_thread*i;
+		thinfo[i].x_end = elements_per_thread*i+elements_per_thread;
+	}
+	thinfo[num_threads-1].x_end = grid_size; //Parche per assegurar reparticio total dels elements
+	printf("Despres inicialitzar thinfo\n");
+	int rc;
+	for (i=0; i < 1; i++) {
+		rc = pthread_create(&threads[i], NULL, th_electric_field, (void *) &thinfo[i]);
+		if (rc) {
+			printf("ERROR creating thread\n");
+			exit(-1);
+		}
+	}
 
-	int block_ini, block_fin;
+	for (i=0; i < 1; i++) {
+		rc = pthread_join(threads[i], NULL);
+		if (rc) {
+			printf("ERROR joining thread\n");
+			exit(-1);
+		}
+	}
 
+
+	/*
 	for (block_ini = 0; block_ini < totalElements-(block_size-1); block_ini += block_size) { 
 		block_fin = block_ini + block_size;
 	  for( x = 0 ; x < grid_size ; x ++ ) {
@@ -248,6 +370,8 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 	    }
 	  }
 	}
+
+	*/
   printf( "\n" ) ;
 
 
