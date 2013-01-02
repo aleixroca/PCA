@@ -179,6 +179,8 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 	float *phiSet = (float *) &_phiSet;
 	/* Blocking stuff */
 	int block_size = 512;
+	/* Threads stuff */
+	int num_threads = 2; 
  
   int maxTotalElements = 0;
   int totalElements = 0;
