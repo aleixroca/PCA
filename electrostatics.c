@@ -37,23 +37,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define sq(a)	 (_mm_sqrt_ps(a))
 #define set(a)	 (_mm_set1_ps(a))
 
-typedef struct {
-	float * coord1;
-	float * coord2;
-	float * coord3;
-	float * charge;
-	int block_size;
-	int grid_size;
-	float grid_span;
-	fftw_real *grid;
-	int totalElements;
-	int x_start;
-	int x_end;	
-} Thinfo;
-
-float *coord1, *coord2, *coord3, *charge;
 
 
+/*
 #define pythagorasVectCore2Duo(x1, y1, z1, x2, y2, z2, d) {\
 	__m128 *vx1, *vy1, *vz1;			\
 	__m128 r1, r2, r3;				\
@@ -68,7 +54,7 @@ float *coord1, *coord2, *coord3, *charge;
 	r3 = mul(r3,r3);				\
 	*((__m128*)d) = sq(add(add(r1,r2),r3));		\
 }
-
+*/
 void assign_charges( struct Structure This_Structure ) {
 
 /************/
@@ -176,12 +162,11 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 }
 
 void *th_electric_field(void *argthinfo) {
-	printf("Estoy vivo!!!\n");
 	Thinfo *thinfo = (Thinfo *) argthinfo;
-	/*float * charge = thinfo->charge;
+	float * charge = thinfo->charge;
 	float * coord1 = thinfo->coord1;
 	float * coord2 = thinfo->coord2;
-	float * coord3 = thinfo->coord3;*/
+	float * coord3 = thinfo->coord3;
 	float grid_span = thinfo->grid_span;
 	int grid_size = thinfo->grid_size;
 	int totalElements = thinfo->totalElements;
@@ -192,7 +177,7 @@ void *th_electric_field(void *argthinfo) {
 
 	float phi;
 	int block_ini, block_fin;
-	int x_centre, y_centre, z_centre;
+	float x_centre, y_centre, z_centre;
 	int x, y, z, i, k;
 	
 	__m128 _phiSet;
@@ -204,13 +189,11 @@ void *th_electric_field(void *argthinfo) {
     printf("No memory.\n");
     exit(-1);
   }
-	printf("He fet un malloc!\n");
   if ((posix_memalign((void**)&epsilon, 16, 4*sizeof(float))!=0)) {
     printf("No memory.\n");
     exit(-1);
   }
 
-x_start = 0; x_end = grid_size;
 	for (block_ini = 0; block_ini < totalElements-(block_size-1); block_ini += block_size) { 
 		block_fin = block_ini + block_size;
 	  for (x = x_start; x < x_end; x++) {
@@ -235,7 +218,6 @@ x_start = 0; x_end = grid_size;
 	      for (z = 0; z < grid_size; z++) {
 	        z_centre = gcentre(z, grid_span, grid_size) ;
 	        phi = 0 ;
-	
 					computeEndBlock(block_ini, totalElements);
 	    	  grid[gaddress(x,y,z,grid_size)] += (fftw_real)phi ;
 	      }
@@ -248,11 +230,13 @@ x_start = 0; x_end = grid_size;
 }
 
 void electric_field( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) {
+
   /* Counters */
   int	residue , atom ;
   /* Co-ordinates */
   int	x, y, z, i, k;
-  float		x_centre , y_centre , z_centre ;
+  float		x_centre , y_centre , z_centre;
+	float *coord1, *coord2, *coord3, *charge;
   /* Variables */
   float		phi;
 	float *distance, *epsilon;
@@ -266,8 +250,6 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 
   int maxTotalElements = 0;
   int totalElements = 0;
-//	float *charge;
-//	float *coord1, *coord2, *coord3;
 
 	for (residue = 1; residue <= This_Structure.length; residue++)
 		maxTotalElements += This_Structure.Residue[residue].size;
@@ -313,9 +295,9 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 		thinfo[i].x_end = elements_per_thread*i+elements_per_thread;
 	}
 	thinfo[num_threads-1].x_end = grid_size; //Parche per assegurar reparticio total dels elements
-	printf("Despres inicialitzar thinfo\n");
+	
 	int rc;
-	for (i=0; i < 1; i++) {
+	for (i=0; i < num_threads; i++) {
 		rc = pthread_create(&threads[i], NULL, th_electric_field, (void *) &thinfo[i]);
 		if (rc) {
 			printf("ERROR creating thread\n");
@@ -323,57 +305,16 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 		}
 	}
 
-	for (i=0; i < 1; i++) {
+	for (i=0; i < num_threads; i++) {
 		rc = pthread_join(threads[i], NULL);
 		if (rc) {
 			printf("ERROR joining thread\n");
 			exit(-1);
 		}
 	}
-
-
-	/*
-	for (block_ini = 0; block_ini < totalElements-(block_size-1); block_ini += block_size) { 
-		block_fin = block_ini + block_size;
-	  for( x = 0 ; x < grid_size ; x ++ ) {
-	    printf( "." ) ;
-	    x_centre  = gcentre( x , grid_span , grid_size ) ;
-	    for( y = 0 ; y < grid_size ; y ++ ) {
-	      y_centre  = gcentre( y , grid_span , grid_size ) ;
-	      for( z = 0 ; z < grid_size ; z ++ ) {
-	        z_centre  = gcentre( z , grid_span , grid_size ) ;
-	        phi = 0 ;
-	
-					computeBlock(block_ini, block_fin);
-	    	  grid[gaddress(x,y,z,grid_size)] += (fftw_real)phi ;
-	      }
-	    }
-	  }
-	}
-
-	if (block_ini != totalElements) { //ultima passada
-	  for( x = 0 ; x < grid_size ; x ++ ) {
-	    printf( "." ) ;
-	    x_centre  = gcentre( x , grid_span , grid_size ) ;
-	    for( y = 0 ; y < grid_size ; y ++ ) {
-	      y_centre  = gcentre( y , grid_span , grid_size ) ;
-	      for( z = 0 ; z < grid_size ; z ++ ) {
-	        z_centre  = gcentre( z , grid_span , grid_size ) ;
-	        phi = 0 ;
-	
-					computeEndBlock(block_ini, totalElements);
-	    	  grid[gaddress(x,y,z,grid_size)] += (fftw_real)phi ;
-	      }
-	    }
-	  }
-	}
-
-	*/
   printf( "\n" ) ;
 
-
   return ;
-
 }
 
 
