@@ -38,9 +38,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define set(a)	 (_mm_set1_ps(a))
 
 
-
-/*
-#define pythagorasVectCore2Duo(x1, y1, z1, x2, y2, z2, d) {\
+#define pythagorasVectCore2Duo2(x1, y1, z1, x2, y2, z2, d) {\
 	__m128 *vx1, *vy1, *vz1;			\
 	__m128 r1, r2, r3;				\
 	vx1 = (__m128*)x1;				\
@@ -54,7 +52,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 	r3 = mul(r3,r3);				\
 	*((__m128*)d) = sq(add(add(r1,r2),r3));		\
 }
-*/
+
+
+
 void assign_charges( struct Structure This_Structure ) {
 
 /************/
@@ -122,6 +122,22 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 
 
 /************************/
+
+#define pythagorasVectCore2Duo3(x1, y1, z1, x2, y2, z2, d) {\
+	__m128 r1, r2, r3;									           \
+	r1 = _mm_load_ps(x1);                          \
+	r2 = _mm_load_ps(y1);                          \
+	r3 = _mm_load_ps(z1);                          \
+	r1 = sub(r1,set(x2));				                   \
+	r1 = mul(r1,r1);			                         \
+	r2 = sub(r2,set(y2));				                   \
+	r2 = mul(r2,r2);				                       \
+	r3 = sub(r3,set(z2));				                   \
+	r3 = mul(r3,r3);				                       \
+	                                               \
+	_mm_store_ps(d, sq(add(add(r1,r2),r3)));	     \
+}
+
 #define calcEpsilon(k) {																		\
 	if (distance[k] < 2.0 ) distance[k] = 2.0 ;               \
 	if (distance[k] >= 8.0 ) {                                \
@@ -138,7 +154,7 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 //Asumeix que el block es multiple de 4
 #define computeBlock(start, stop) {			  											\
 	for (i = start; i < stop; i+=4) {                             \
-		pythagorasVectCore2Duo(&coord1[i], &coord2[i], &coord3[i],  \
+		pythagorasVectCore2Duo3(&coord1[i], &coord2[i], &coord3[i],  \
 											x_centre, y_centre, z_centre, distance);  \
 		                                                            \
 		for (k = 0; k < 4; k++) calcEpsilon(k);					            \
@@ -224,13 +240,14 @@ void *th_electric_field(void *argthinfo) {
 	    }
 	  }
 	}
-
+	printf("He acabat la feina!\n");
 	pthread_exit(NULL);
 	return ;
 }
 
 void electric_field( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) {
-
+	FILE *f = fopen("grid_dolent", "w");
+	printf("ELECTRIC FIELD STARTS HERE\n");
   /* Counters */
   int	residue , atom ;
   /* Co-ordinates */
@@ -313,6 +330,14 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 		}
 	}
   printf( "\n" ) ;
+
+	printf("ELECTRIC FIELD ENDS HERE\n");
+
+/*  for (x = 0; x < grid_size; x++)
+    for (y = 0; y < grid_size; y++)
+      for (z = 0; z < grid_size; z++)
+        fprintf(f,"%f\n",grid[gaddress(x,y,z,grid_size)]);
+*/
 
   return ;
 }

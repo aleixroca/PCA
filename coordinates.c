@@ -64,25 +64,7 @@ float pythagoras2( float x1 , float y1 , float z1 , float x2 , float y2 , float 
 
 }
 
-
-
-/*
-void pythagorasVectCore2Duo2( float *x1 , float *y1 , float *z1 , float x2 , float y2 , float z2, float *d) {
-	__m128 *vx1, *vy1, *vz1;
-	__m128 r1, r2, r3;
-	vx1 = (__m128*)x1;
-	vy1 = (__m128*)y1;
-	vz1 = (__m128*)z1;
-	r1 = sub(*vx1,set(x2));
-	r1 = mul(r1,r1);
-	r2 = sub(*vy1,set(y2));
-	r2 = mul(r2,r2);
-	r3 = sub(*vz1,set(z2));
-	r3 = mul(r3,r3);
-	*((__m128*)d) = sq(add(add(r1,r2),r3));
-}
-*/
-void pythagorasVectCore2Duo( float *x1 , float *y1 , float *z1 , float x2 , float y2 , float z2, float *d) {
+inline void pythagorasVectCore2Duo( float *x1 , float *y1 , float *z1 , float x2 , float y2 , float z2, float *d) {
 	__m128 vx1, vy1, vz1;			
 	__m128 r1, r2, r3;				
 	vx1 = _mm_load_ps(x1);
