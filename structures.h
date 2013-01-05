@@ -57,10 +57,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define GENERAL_MEMORY_PROBLEM printf( "You do not have enough memory ([m|re]alloc failure)\nDying\n\n" ) ; exit( EXIT_FAILURE ) ;
 
-#define pythagoras(x1 , y1 , z1 , x2 , y2 , z2) ({ \
-    sqrt( ( ( x1 - x2 ) * ( x1 - x2 ) ) + ( ( y1 - y2 ) * ( y1 - y2 ) ) + ( ( z1 - z2 ) * ( z1 - z2 ) ) ) ; \
-})
-
 /************/
 
 /* The structures comprising a Structure (representation of an organic molecule in 3D) */
@@ -133,6 +129,26 @@ struct Matrix{
 
 /************/
 
+
+typedef struct {
+	float * coord1;
+	float * coord2;
+	float * coord3;
+	float * charge;
+	int block_size;
+	int grid_size;
+	float grid_span;
+	fftw_real *grid;
+	int totalElements;
+	int x_start;
+	int x_end;	
+} Thinfo;
+
+inline void allocatedata_electric_field(float **charge, float **coord1, float **coord2, float **coord3,int maxTotalElements); 
+void *th_electric_field(void *argthinfo);
+void pythagorasVectCore2Duo( float *x1 , float *y1 , float *z1 , float x2 , float y2 , float z2, float *d);
+float pythagoras2( float x1 , float y1 , float z1 , float x2 , float y2 , float z2 );
+
 extern struct Structure read_pdb_to_structure( char *pdb_file_name ) ;
 extern void write_structure_to_pdb( struct Structure This_Structure , char *pdb_file_name ) ;
 extern struct Structure duplicate_structure( struct Structure This_Structure ) ;
@@ -147,7 +163,7 @@ extern struct Angle generate_global_angles( int angle_step ) ;
 extern struct Angle generate_range_of_angles( int angle_step , int angle_range , int z_twist , int theta , int phi ) ;
 
 extern int gord( float position , float grid_span , int grid_size ) ;
-//extern float pythagoras( float x1 , float y1 , float z1 , float x2 , float y2 , float z2 ) ;
+extern float pythagoras( float x1 , float y1 , float z1 , float x2 , float y2 , float z2 ) ;
 
 extern void discretise_structure( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) ;
 extern void surface_grid( float grid_span , int grid_size , fftw_real *grid , float surface , float internal_value ) ;
