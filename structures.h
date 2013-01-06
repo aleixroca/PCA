@@ -141,7 +141,8 @@ typedef struct {
 	fftw_real *grid;
 	int totalElements;
 	int x_start;
-	int x_end;	
+	int x_end;
+	int num_threads;	
 } Thinfo;
 
 inline void allocatedata_electric_field(float **charge, float **coord1, float **coord2, float **coord3,int maxTotalElements); 

@@ -40,7 +40,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define load(a) 		(_mm_load_ps(a))
 #define div(a,b)		(_mm_div_ps(a,b))
 
-
+pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+int ready_threads;
 
 
 
@@ -178,6 +180,7 @@ void *th_electric_field(void *argthinfo) {
 	int block_size = thinfo->block_size;
 	int x_start = thinfo->x_start;
 	int x_end = thinfo->x_end;
+	int num_threads = thinfo->num_threads;
 	fftw_real *grid = thinfo->grid;
 
 	float phi;
@@ -213,6 +216,16 @@ void *th_electric_field(void *argthinfo) {
 	      }
 	    }
 	  }
+		//Changing block. Must wait for others threads to finish.
+		pthread_mutex_lock(&mut);
+		ready_threads++;
+		if (ready_threads==num_threads) {
+			ready_threads=0;
+			pthread_cond_broadcast(&cond);
+		} else {
+			pthread_cond_wait(&cond, &mut);
+		}
+		pthread_mutex_unlock(&mut);
 	}
 
 	if (block_ini != totalElements) { //ultima passada
@@ -248,6 +261,7 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 	int block_size = 512;
 	/* Threads stuff */
 	int num_threads = 2; 
+	ready_threads = 0;
 	Thinfo *thinfo;
  	pthread_t threads[num_threads];
 
@@ -297,6 +311,7 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 		thinfo[i].totalElements = totalElements;
 		thinfo[i].x_start = elements_per_thread*i;
 		thinfo[i].x_end = elements_per_thread*i+elements_per_thread;
+		thinfo[i].num_threads = num_threads;
 	}
 	thinfo[num_threads-1].x_end = grid_size; //Parche per assegurar reparticio total dels elements
 	
