@@ -129,31 +129,33 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 	store(d, sq(add(add(r1,r2),r3)));				\
 }
 
-#define calcEpsilon(k) {																		\
-	if (distance[k] < 2.0 ) distance[k] = 2.0 ;               \
-	if (distance[k] >= 8.0 ) {                                \
-		epsilon[k] = 80 ;                                       \
-	} else {                                                  \
-		if (distance[k] <= 6.0 ) {                              \
-			epsilon[k] = 4;                                       \
-		} else {                                                \
-			epsilon[k] = ( 38 * distance[k] ) - 224;              \
-		}                                                       \
-	}                                                         \
+
+#define calcEpsilon(k) {                  \
+	if (distance[k] >= 8.0) {								\
+		epsilon[k] = 80;                      \
+	}else if (distance[k] > 6.0) {          \
+		epsilon[k] = (38*distance[k]) - 224;  \
+	}else if (distance[k] >= 2.0) {         \
+		epsilon[k] = 4.0;                     \
+	}else {                                 \
+		epsilon[k] = 4.0;                     \
+		distance[k] = 2.0;                    \
+	}                                       \
 }
 
 //Asumeix que el block es multiple de 4
 #define computeBlock(start, stop) {																		\
+	_phiSet = set(0);																									\
 	for (i = start; i < stop; i+=4) {                             			\
 		pythagorasVectCore2DuoLS(&coord1[i], &coord2[i], &coord3[i],			\
 											x_centre, y_centre, z_centre, distance); 				\
 		                                                           				\
 		for (k = 0; k < 4; k++) calcEpsilon(k);					           				\
-                                                               				\
 																																			\
-		_phiSet=div(load(&charge[i]), mul(load(epsilon),load(distance)));	\
-		phi += phiSet[0] + phiSet[1] + phiSet[2] + phiSet[3];       			\
-	}                                                             			\
+		_phi_tmp=div(load(&charge[i]), mul(load(epsilon),load(distance)));	\
+		_phiSet = add(_phi_tmp, _phiSet);\
+	}\
+	phi += phiSet[0] + phiSet[1] + phiSet[2] + phiSet[3];\
 }
 
 //No assumeix que el block es multiple de 4
@@ -161,7 +163,7 @@ inline void allocatedata_electric_field(float **charge, float **coord1, float **
 	computeBlock(start, (stop-3));                                \
                                                                 \
 	for (;i < stop; i++) {                                        \
-	  distance[0] = pythagoras2( coord1[i], coord2[i],            \
+	  distance[0] = pythagoras( coord1[i], coord2[i],            \
 					coord3[i], x_centre, y_centre, z_centre);             \
 		calcEpsilon(0);                                             \
 		phi += ( charge[i] / ( epsilon[0] * distance[0] ) ) ;       \
@@ -188,8 +190,10 @@ void *th_electric_field(void *argthinfo) {
 	float x_centre, y_centre, z_centre;
 	int x, y, z, i, k;
 	
+	__m128 _phi_tmp;
 	__m128 _phiSet;
 	float *phiSet = (float *) &_phiSet;
+
 	float * distance;
 	float * epsilon;
 
@@ -228,7 +232,8 @@ void *th_electric_field(void *argthinfo) {
 		pthread_mutex_unlock(&mut);
 	}
 
-	if (block_ini != totalElements) { //ultima passada
+	//Last block is not a multiple of block_size
+	if (block_ini != totalElements) {
 	  for (x = x_start; x < x_end; x++ ) {
 	    x_centre = gcentre(x, grid_span, grid_size) ;
 	    for (y = 0; y < grid_size; y++) {
@@ -247,16 +252,11 @@ void *th_electric_field(void *argthinfo) {
 }
 
 void electric_field( struct Structure This_Structure , float grid_span , int grid_size , fftw_real *grid ) {
-	printf("ELECTRIC FIELD STARTS HERE\n");
   /* Counters */
   int	residue , atom ;
   /* Co-ordinates */
   int	x, y, z, i, k;
-  float		x_centre , y_centre , z_centre;
 	float *coord1, *coord2, *coord3, *charge;
-  /* Variables */
-  float		phi;
-	float *distance, *epsilon;
  	/* Blocking stuff */
 	int block_size = 512;
 	/* Threads stuff */
@@ -264,7 +264,6 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 	ready_threads = 0;
 	Thinfo *thinfo;
  	pthread_t threads[num_threads];
-
 
   int maxTotalElements = 0;
   int totalElements = 0;
@@ -283,7 +282,6 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 				coord3[totalElements] = This_Structure.Residue[residue].Atom[atom].coord[3]; 
 				totalElements++;
 			}
-
 
   for (x = 0; x < grid_size; x++)
     for (y = 0; y < grid_size; y++)
@@ -313,7 +311,8 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 		thinfo[i].x_end = elements_per_thread*i+elements_per_thread;
 		thinfo[i].num_threads = num_threads;
 	}
-	thinfo[num_threads-1].x_end = grid_size; //Parche per assegurar reparticio total dels elements
+	//Ensures repartition of all elements
+	thinfo[num_threads-1].x_end = grid_size; 
 	
 	int rc;
 	for (i=0; i < num_threads; i++) {
@@ -332,8 +331,6 @@ void electric_field( struct Structure This_Structure , float grid_span , int gri
 		}
 	}
   printf( "\n" ) ;
-
-	printf("ELECTRIC FIELD ENDS HERE\n");
 
 	#ifdef grid_out
 	 FILE *f = fopen("grid_dolent", "w");
